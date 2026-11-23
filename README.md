@@ -1,5 +1,9 @@
 # Compose Diff
 
+<!-- coolcode:guide -->
+Compare before and after configurations, narrow the results by service or change type, and export a dated report. Values start hidden in results and exports; reveal them only after checking for secrets, and remember that comments and mapping order are not structural changes.
+<!-- /coolcode:guide -->
+
 [Open Compose Diff](https://coolcode.ca/composediff/) compares two Docker Compose YAML or JSON configurations locally. Review changed services, images, ports, environment variables, volumes and other settings, then export a dated JSON or CSV report. A second tab converts a supported `docker run` command into an editable Compose draft.
 
 No API key, account, container engine or backend is required. The YAML parser is bundled with the site. Your pasted text and selected files stay in the browser and are not saved to browser storage. The shared CoolCode metrics script records ordinary site activity; this app never sends it input or file contents.
