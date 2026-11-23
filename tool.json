@@ -1,12 +1,22 @@
 {
-  "id": "coolcode-tool-template",
-  "title": "CoolCode Tool Starter",
-  "description": "A browser-only example that trims lines and removes exact duplicates.",
-  "category": "security",
-  "tags": ["text", "lines", "duplicates"],
-  "icon": "scan-search",
-  "url": "/coolcode-tool-template/",
-  "source": "https://github.com/jsdyer/coolcode-tool-template",
+  "id": "composediff",
+  "title": "Compose Diff",
+  "description": "Compare Docker Compose configurations and review exactly what changed.",
+  "category": "projects",
+  "tags": [
+    "Docker",
+    "Compose",
+    "YAML",
+    "comparison",
+    "homelab"
+  ],
+  "icon": "workflow",
+  "url": "/composediff/",
+  "source": "https://github.com/jsdyer/composediff",
   "hosting": "project",
-  "access": "browser"
+  "access": "browser",
+  "data_info": {
+    "mode": "local",
+    "detail": "Compose YAML or JSON is parsed and compared in your browser; no container, environment or external file is accessed."
+  }
 }

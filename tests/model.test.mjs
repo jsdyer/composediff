@@ -1,21 +1,21 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { cleanLines } from '../web/model.mjs';
-test('trims, removes blanks and preserves first-seen order', () => {
-  assert.deepEqual(cleanLines('  Halifax\nLangley\nHalifax\n\nVancouver  '), {
-    text: 'Halifax\nLangley\nVancouver', count: 3, removed: 1,
-  });
-});
-test('supports Windows and old Mac line endings', () => {
-  assert.equal(cleanLines('a\r\nb\ra').text, 'a\nb');
-});
-test('empty text and whitespace produce an empty result', () => {
-  assert.deepEqual(cleanLines(' \n\t'), { text: '', count: 0, removed: 0 });
-});
-test('preserves case and Unicode', () => {
-  assert.equal(cleanLines('Québec\nquébec\n東京\nQuébec').text, 'Québec\nquébec\n東京');
-});
-test('treats markup as ordinary text', () => {
-  assert.equal(cleanLines('<script>alert(1)</script>\n<script>alert(1)</script>').text, '<script>alert(1)</script>');
-});
-test('rejects non-text input', () => { assert.throws(() => cleanLines(null), TypeError); });
+import fs from 'node:fs';
+import {validateConfig,parseCompose,compareCompose,compareData,reportForExport,reportCSV,convertRun,tokenizeCommand} from '../web/model.mjs';
+const config=validateConfig(JSON.parse(fs.readFileSync(new URL('../web/config.json',import.meta.url))));
+const yaml=(line='image: alpine:3.22')=>'services:\n  app:\n    '+line+'\n';
+test('service additions, removals and fields describe a real configuration change',()=>{const r=compareCompose(config.examples[0].before,config.examples[0].after,config);assert.equal(r.changes.length,6);assert.deepEqual(r.services.map(x=>[x.name,x.status]),[['cache','removed'],['web','changed'],['worker','added']]);assert.equal(r.changes.find(x=>x.path==='/services/web/ports/0').after,'127.0.0.1:8080:80');});
+test('maps ignore key order and environment list/map forms can match',()=>{const x=config.examples[1];assert.equal(compareCompose(x.before,x.after,config).changes.length,0);assert.ok(compareCompose(x.before,x.after,config,false).changes.length);});
+test('environment inheritance differs from an empty string; boolean values need quotes',()=>{const r=compareCompose(yaml('environment: [TOKEN]'),yaml('environment: [TOKEN=]'),config);assert.equal(r.changes[0].before,null);assert.equal(r.changes[0].after,'');assert.throws(()=>parseCompose(yaml('environment: {FLAG: true}'),config),/quote boolean/);assert.throws(()=>parseCompose(yaml('environment: {BAD: [x]}'),config),/values must/);});
+test('literal expressions are retained and external file coverage is explicit',()=>{const r=compareCompose(yaml('image: app:${VERSION}\n    env_file: .env'),yaml('image: app:${NEXT}\n    env_file: .env'),config);assert.equal(r.changes[0].before,'app:${VERSION}');assert.equal(r.warnings.length,2);});
+test('YAML merge anchors resolve, duplicate keys and unknown tags are rejected',()=>{const a='x-base: &base\n  image: alpine:3.22\nservices:\n  app:\n    <<: *base\n';assert.equal(parseCompose(a,config).data.services.app.image,'alpine:3.22');assert.throws(()=>parseCompose(yaml('image: x\n    image: y'),config),/unique/);assert.throws(()=>parseCompose(yaml('image: !reset x'),config),/Unsupported YAML/);assert.throws(()=>parseCompose(yaml()+'---\n'+yaml(),config),/YAML could not/);});
+test('recursive aliases, expansion, depth and size are bounded',()=>{assert.throws(()=>parseCompose('services: &x\n  app: *x',config),/Recursive/);assert.throws(()=>parseCompose(yaml(),{...config,maximumCharacters:10}),/exceeds/);assert.throws(()=>parseCompose(yaml(),{...config,maximumDepth:1}),/deeply nested/);assert.throws(()=>parseCompose(yaml(),{...config,maximumNodes:2}),/too large/);});
+test('arrays retain order and JSON Pointer escapes arbitrary property names',()=>{const a={services:{app:{ports:['80:80','90:90'],labels:{'a/b~c':'old'}}}},b={services:{app:{ports:['90:90','80:80'],labels:{'a/b~c':'new'}}}};const r=compareData(a,b);assert.equal(r.changes.length,3);assert.equal(r.changes[0].path,'/services/app/labels/a~1b~0c');assert.throws(()=>compareData(a,b,1),/Too many/);});
+test('prototype-like property names remain ordinary data',()=>{const r=parseCompose('services:\n  constructor:\n    labels:\n      __proto__: safe\n',config);assert.equal(r.data.services.constructor.labels.__proto__,'safe');assert.equal({}.polluted,undefined);});
+test('redacted reports never include values; explicit reveal does',()=>{const r=compareCompose(yaml('environment: {SECRET: old-secret-value}'),yaml('environment: {SECRET: new-secret-value}'),config);assert.ok(!JSON.stringify(reportForExport(r)).includes('new-secret-value'));assert.ok(JSON.stringify(reportForExport(r,true)).includes('new-secret-value'));assert.ok(!reportCSV(r).includes('new-secret-value'));assert.ok(reportCSV(r,true).includes('new-secret-value'));});
+test('JSON inputs work and service definitions must be mappings',()=>{assert.equal(parseCompose('{"services":{"api":{"image":"x"}}}',config).data.services.api.image,'x');assert.throws(()=>parseCompose('services: {api: null}',config),/must be a mapping/);assert.throws(()=>parseCompose('[]',config),/services mapping/);});
+test('config examples expand without fixed list size assumptions',()=>{const bigger={...config,examples:[...config.examples,{name:'Extra',before:yaml(),after:yaml('image: added:1')}]};assert.equal(validateConfig(bigger).examples.length,config.examples.length+1);assert.equal(compareCompose(bigger.examples.at(-1).before,bigger.examples.at(-1).after,bigger).changes.length,1);});
+test('docker command converts supported flags, preserves argument boundaries and named volume identity',()=>{const r=convertRun('docker run -d -p8080:80 -e "HELLO=two words" -v db-data:/data --entrypoint /bin/sh alpine:3.22 -c "echo hello"','database');const data=parseCompose(r.yaml,config).data;assert.equal(data.services.database.environment.HELLO,'two words');assert.deepEqual(data.services.database.entrypoint,['/bin/sh']);assert.deepEqual(data.services.database.command,['-c','echo hello']);assert.equal(data.volumes['db-data'].external,true);assert.equal(data.volumes['db-data'].name,'db-data');assert.equal(data.services.database.ports[0],'8080:80');});
+test('literal dollars are protected from Compose interpolation',()=>{const r=convertRun("docker run -e 'PASSWORD=$literal' alpine:3.22 echo '${TEST}'");const data=parseCompose(r.yaml,config).data;assert.equal(data.services.app.environment.PASSWORD,'$$literal');assert.equal(data.services.app.command[1],'$${TEST}');});
+test('converter rejects unknown flags and shell execution syntax without partial output',()=>{for(const command of ['docker run --made-up x alpine','docker run alpine; rm -rf /','docker run -e A=$(whoami) alpine','docker run -e A=$HOME alpine','docker run alpine | x','docker run --name','docker run --network custom alpine'])assert.throws(()=>convertRun(command));assert.throws(()=>convertRun('docker run -v C:/stuff:/data alpine'),/Windows/);});
+test('tokenization handles quoted empty args and line continuations',()=>{assert.deepEqual(tokenizeCommand('docker run \\\n alpine echo "" "two words"'),['docker','run','alpine','echo','','two words']);assert.throws(()=>tokenizeCommand('docker run "unterminated'),/Unclosed/);});

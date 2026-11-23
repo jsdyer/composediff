@@ -1,0 +1,21 @@
+{
+  "maximumCharacters": 500000,
+  "maximumNodes": 30000,
+  "maximumDepth": 60,
+  "maximumAliases": 50,
+  "maximumChanges": 5000,
+  "workerTimeoutSeconds": 10,
+  "examples": [
+    {
+      "name": "A small homelab stack",
+      "before": "services:\n  web:\n    image: nginx:1.26\n    ports:\n      - \"8080:80\"\n    environment:\n      TZ: America/Vancouver\n      LOG_LEVEL: info\n    volumes:\n      - ./site:/usr/share/nginx/html:ro\n    restart: unless-stopped\n  cache:\n    image: redis:7\n",
+      "after": "services:\n  web:\n    image: nginx:1.28\n    ports:\n      - \"127.0.0.1:8080:80\"\n    environment:\n      - TZ=America/Vancouver\n      - LOG_LEVEL=warn\n    volumes:\n      - ./site:/usr/share/nginx/html:ro\n    restart: unless-stopped\n    read_only: true\n  worker:\n    image: alpine:3.22\n    command: [\"echo\", \"Ready\"]\n"
+    },
+    {
+      "name": "Equivalent environment forms",
+      "before": "services:\n  app:\n    image: alpine:3.22\n    environment:\n      TZ: America/Halifax\n      PORT: \"8080\"\n",
+      "after": "services:\n  app:\n    environment: [PORT=8080, TZ=America/Halifax]\n    image: alpine:3.22\n"
+    }
+  ],
+  "commandExample": "docker run -d --name local-web -p 127.0.0.1:8080:80 -v ./site:/usr/share/nginx/html:ro -e TZ=America/Vancouver --restart unless-stopped nginx:1.28"
+}
